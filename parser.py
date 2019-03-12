@@ -266,54 +266,52 @@ def get_metadata(extracted_archives, parser_version):
                 log.error("Unable to open any DICOMs for scan {}".format(scan))
                 continue
 
-            else:
+            log.info("Found {} DICOM files for scan {} of exam {}".format(
+                len(instance_files),
+                scan.name,
+                exam_dir)
+            )
 
-                log.info("Found {} DICOM files for scan {} of exam {}".format(
-                    len(instance_files),
-                    scan.name,
-                    exam_dir)
-                )
+            dicom_data = parse_dicom_dataset(sample_file)
 
-                dicom_data = parse_dicom_dataset(sample_file)
+            scan_meta['dicom_data'] = parse_dicom_dataset(sample_file)
+            scan_meta['private_data'] = parse_private_data(sample_file)
 
-                scan_meta['dicom_data'] = parse_dicom_dataset(sample_file)
-                scan_meta['private_data'] = parse_private_data(sample_file)
+            study_meta['data'].append(scan_meta)
 
-                study_meta['data'].append(scan_meta)
+            collect_ge_extra_meta = False
 
-                collect_ge_extra_meta = False
+            try:
+                sop_class = dicom_data['00080016']['Value'][0]
+            except (KeyError, IndexError):
+                sop_class = None
 
-                try:
-                    sop_class = dicom_data['00080016']['Value'][0]
-                except (KeyError, IndexError):
-                    sop_class = None
+            try:
+                manufacturer = dicom_data['00080070']['Value'][0]
+            except (KeyError, IndexError):
+                manufacturer = None
 
-                try:
-                    manufacturer = dicom_data['00080070']['Value'][0]
-                except (KeyError, IndexError):
-                    manufacturer = None
+            if sop_class and manufacturer:
 
-                if sop_class and manufacturer:
+                if (sop_class in ["1.2.840.10008.5.1.4.1.1.4", "1.2.840.10008.5.1.4.1.1.4.1"]) and \
+                   ("ge" in manufacturer.lower() or "general electric" in manufacturer.lower()):
 
-                    if (sop_class in ["1.2.840.10008.5.1.4.1.1.4", "1.2.840.10008.5.1.4.1.1.4.1"]) and \
-                       ("ge" in manufacturer.lower() or "general electric" in manufacturer.lower()):
+                    # Determine if series is likely to be multiecho and if so, collect the relevant metadata
+                    # to order the scans
+                    try:
+                        num_indices = dicom_data["00201002"]['Value'][0]
+                    except (KeyError, IndexError):
+                        num_indices = None
 
-                        # Determine if series is likely to be multiecho and if so, collect the relevant metadata
-                        # to order the scans
-                        try:
-                            num_indices = dicom_data["00201002"]['Value'][0]
-                        except (KeyError, IndexError):
-                            num_indices = None
+                    try:
+                        num_slices = dicom_data["0021104F"]['Value'][0]
+                    except (KeyError, IndexError):
+                        num_slices = None
 
-                        try:
-                            num_slices = dicom_data["0021104F"]['Value'][0]
-                        except (KeyError, IndexError):
-                            num_slices = None
-
-                        if not num_indices or not num_slices:
-                            log.info("Scan did not have number of slices or number of indices in metadata. Treating"
-                                     " as non-multiecho.")
-                            continue
+                    if not num_indices or not num_slices:
+                        log.info("Scan did not have number of slices or number of indices in metadata. Treating"
+                                 " as non-multiecho.")
+                    else:
 
                         log.info("Num Indices: {}".format(num_indices))
                         log.info("Num Slices: {}".format(num_slices))
@@ -323,26 +321,27 @@ def get_metadata(extracted_archives, parser_version):
                             if num_indices % num_slices != 0:
                                 log.warning("Multiecho testing detected possible un-accounted for slices in this "
                                             "acquisition. Treating as a non-multiecho series.")
-                                continue
+                            else:
 
-                            num_echoes = num_indices // num_slices
+                                num_echoes = num_indices // num_slices
 
-                            log.info("Number of echoes detected: {}".format(num_echoes))
+                                log.info("Number of echoes detected: {}".format(num_echoes))
 
-                            # Try to fetch a slice representative slice index - if unable, might be CBV scan
-                            try:
-                                sample_slice_index = dicom_data['001910A2']['Value'][0]
-                            except (KeyError, IndexError):
-                                sample_slice_index = None
+                                # Try to fetch a slice representative slice index - if unable, might be CBV scan
+                                try:
+                                    sample_slice_index = dicom_data['001910A2']['Value'][0]
+                                except (KeyError, IndexError):
+                                    sample_slice_index = None
 
-                            if not sample_slice_index:
-                                log.warning("Unable to retrieve slice indices (usually happens with CBV scans), "
-                                            "treating as non-multiecho series.")
-                                continue
+                                if not sample_slice_index:
+                                    log.warning("Unable to retrieve slice indices "
+                                                "(usually happens with CBV scans), treating "
+                                                "as non-multiecho series.")
+                                else:
 
-                            # Collect GE metadata for sorting
-                            log.info("Scan is probable multiecho - collecting extra metadata for sorting")
-                            collect_ge_extra_meta = True
+                                    # Collect GE metadata for sorting
+                                    log.info("Scan is probable multiecho - collecting extra metadata for sorting")
+                                    collect_ge_extra_meta = True
 
                 with open(str(exam_dir / scan_outfname), mode="wt") as outfile:
 
