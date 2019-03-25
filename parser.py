@@ -343,28 +343,28 @@ def get_metadata(extracted_archives, parser_version):
                                     log.info("Scan is probable multiecho - collecting extra metadata for sorting")
                                     collect_ge_extra_meta = True
 
-                with open(str(exam_dir / scan_outfname), mode="wt") as outfile:
+            with open(str(exam_dir / scan_outfname), mode="wt") as outfile:
 
-                    num_workers = 32
+                num_workers = 32
 
-                    with ProcessPool(num_workers) as pool:
+                with ProcessPool(num_workers) as pool:
 
-                        instance_results = []
+                    instance_results = []
 
-                        for dcm, dicom_data in pool.imap(
-                                get_dicom_meta,
-                                [(dcm, collect_ge_extra_meta) for dcm in instance_files]
-                        ):
+                    for dcm, dicom_data in pool.imap(
+                            get_dicom_meta,
+                            [(dcm, collect_ge_extra_meta) for dcm in instance_files]
+                    ):
 
-                            instance_results.append("{}\t{}".format(
-                                Path(dcm).name,
-                                json.dumps(dicom_data)
-                            ))
+                        instance_results.append("{}\t{}".format(
+                            Path(dcm).name,
+                            json.dumps(dicom_data)
+                        ))
 
-                    outfile.write("\n".join(instance_results))
+                outfile.write("\n".join(instance_results))
 
-                log.info("Time elapsed extracting metadata for scan {} of exam {}: {}".format(scan.name, exam_dir,
-                                                                                              time.time() - scan_start))
+            log.info("Time elapsed extracting metadata for scan {} of exam {}: {}".format(scan.name, exam_dir,
+                                                                                          time.time() - scan_start))
 
         checksum_start = time.time()
 
